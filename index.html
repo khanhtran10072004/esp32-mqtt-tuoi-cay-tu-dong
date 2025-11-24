@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Smart Garden Pro (MQTT)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<style>
+ body{font-family:sans-serif;text-align:center;background:#f4f7f6;padding:10px;color:#333;}
+ .card{background:#fff;max-width:400px;margin:20px auto;padding:20px;border-radius:15px;box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+ .row{display:flex;justify-content:space-between;margin:12px 0;border-bottom:1px dashed #eee;padding-bottom:5px;align-items:center;}
+ button{padding:12px;border:none;border-radius:8px;color:#fff;font-weight:bold;margin:5px;cursor:pointer;flex:1;}
+ .b-on{background:#27ae60;} .b-off{background:#c0392b;} 
+ .b-auto{background:#2980b9;} .b-man{background:#f39c12;color:#333;}
+ .b-dis{background:#e0e0e0!important;color:#999!important;pointer-events:none;}
+ #error-box { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(220,53,69,0.95); color:white; z-index:99; flex-direction:column; justify-content:center; align-items:center;}
+ input[type=number] { width:60px; padding:5px; text-align:center; border:1px solid #ddd; border-radius:5px; }
+ input[type=time] { width:90px; padding:5px; text-align:center; border:1px solid #ddd; border-radius:5px; }
+ input[type=range] { width: 100%; margin-right: 10px; }
+ .save-btn{background:#7f8c8d;font-size:12px;padding:5px 10px;flex:0;}
+ #mqtt-status { font-size: 12px; color: gray; }
+</style>
+</head>
+<body>
+ <div id="error-box"><div style="font-size:20px;font-weight:bold;margin-bottom:20px;">⚠️ CẢNH BÁO!<br>Bơm 3 lần không ẩm!</div><button onclick="mqttSendCmd('MAN')" style="background:white;color:red;width:200px;">TẮT BÁO ĐỘNG</button></div>
+<div class='card'>
+ <h3>Vườn Thông Minh MQTT</h3>
+ <div id="mqtt-status">Đang kết nối MQTT...</div>
+ <div class='row'><span>🕒 Giờ:</span><b id='time'>--</b></div>
+ <div class='row'><span>🌡️ Nhiệt độ:</span><b id='temp'>-- °C</b></div>
+ <div class='row'><span>💧 Độ ẩm đất:</span><b id='soil'>--</b></div>
+ <div class='row'><span>⚙️ Chế độ:</span><b id='mode'>--</b></div>
+ <div class='row'><span>🔌 Máy Bơm:</span><b id='pump'>--</b></div>
+
+ <div id='admin' style='margin-top:20px;'>
+   <div style='display:flex;'><button id='btnOn' class='b-on' onclick="mqttSendCmd('ON')">BẬT</button><button id='btnOff' class='b-off' onclick="mqttSendCmd('OFF')">TẮT</button></div>
+   <div style='display:flex;'><button id='btnAu' class='b-auto' onclick="mqttSendCmd('AUTO')">AUTO</button><button id='btnMan' class='b-man' onclick="mqttSendCmd('MAN')">THỦ CÔNG</button></div>
+   
+   <hr style='border:0;border-top:1px solid #eee;margin:15px 0;'>
+   <div class='row' style="display:block;text-align:left;">
+     <div style="display:flex;justify-content:space-between;"><span>🚀 Tốc độ bơm:</span><b id="lblSpd">255</b></div>
+     <div style="display:flex;align-items:center;margin-top:5px;">
+        <input type="range" id="rngSpd" min="70" max="255" oninput="updSpd(this.value)" onchange="sndSpd(this.value)">
+     </div>
+   </div>
+
+   <hr style='border:0;border-top:1px solid #eee;margin:15px 0;'>
+   <div class='row'><span>Đất Khô Bật (>):</span><div><input type='number' id='inS'><button class='save-btn' onclick="setVal('S', 'inS', 1, 1023)">Lưu</button></div></div>
+   <div class='row'><span>Nhiệt Max (<):</span><div><input type='number' id='inT'><button class='save-btn' onclick="setVal('T', 'inT', 0, 100)">Lưu</button></div></div>
+   <div class='row' style="display:block;text-align:left"><div>Giờ Tưới:</div><div style="display:flex;justify-content:space-between;margin-top:5px;"><input type='time' step='1' id='inTS'> - <input type='time' step='1' id='inTE'><button class='save-btn' onclick="setTime()">Lưu</button></div></div>
+
+   <hr style='border:0;border-top:1px dashed #eee;margin:15px 0;'>
+   <div class='row'><span>⏱️ Bơm (s):</span><div><input type='number' id='inPon'><button class='save-btn' onclick="setVal('PON', 'inPon', 1, 300)">Lưu</button></div></div>
+   <div class='row'><span>⏳ Nghỉ (s):</span><div><input type='number' id='inSoak'><button class='save-btn' onclick="setVal('SOAK', 'inSoak', 1, 600)">Lưu</button></div></div>
+ </div>
+</div>
+
+<script>
+ // === THIẾT LẬP MQTT (Phải trùng với ESP32) ===
+ const MQTT_SERVER = "broker.hivemq.com";
+ const MQTT_PORT = 8000; // Cổng WebSocket của HiveMQ
+ const MQTT_CLIENT_ID = "Web_SmartGarden_" + parseInt(Math.random() * 100000); 
+ const TOPIC_STATUS = "sg/esp32/garden1/status";
+ const TOPIC_COMMAND = "sg/esp32/garden1/cmd";
+ const TOPIC_SETTINGS = "sg/esp32/garden1/set";
+ 
+ let mqttClient;
+ 
+ function mqttConnect() {
+   mqttClient = new Paho.MQTT.Client(MQTT_SERVER, MQTT_PORT, MQTT_CLIENT_ID);
+   mqttClient.onConnectionLost = onConnectionLost;
+   mqttClient.onMessageArrived = onMessageArrived;
+ 
+   let options = {
+     timeout: 3,
+     onSuccess: onConnect,
+     onFailure: onFailure
+   };
+   
+   document.getElementById('mqtt-status').innerText = "Đang kết nối...";
+   mqttClient.connect(options);
+ }
+ 
+ function onConnect() {
+   document.getElementById('mqtt-status').innerText = "✅ Đã kết nối MQTT";
+   mqttClient.subscribe(TOPIC_STATUS);
+   console.log("MQTT Connected & Subscribed to " + TOPIC_STATUS);
+ }
+ 
+ function onFailure(responseObject) {
+   document.getElementById('mqtt-status').innerText = "❌ Lỗi kết nối MQTT. Thử lại sau 5s.";
+   console.log("MQTT Failed: " + responseObject.errorMessage);
+   setTimeout(mqttConnect, 5000);
+ }
+ 
+ function onConnectionLost(responseObject) {
+   if (responseObject.errorCode !== 0) {
+      console.log("MQTT Connection Lost: " + responseObject.errorMessage);
+      mqttConnect(); // Kết nối lại
+   }
+ }
+ 
+ function onMessageArrived(message) {
+   if (message.destinationName === TOPIC_STATUS) {
+      updateUI(JSON.parse(message.payloadString));
+   }
+ }
+ 
+ function mqttSendCmd(cmd) {
+   if (mqttClient && mqttClient.isConnected()) {
+      message = new Paho.MQTT.Message(cmd);
+      message.destinationName = TOPIC_COMMAND;
+      mqttClient.send(message);
+   } else {
+      alert("Chưa kết nối MQTT! Vui lòng chờ.");
+   }
+ }
+ 
+ function mqttSendSetting(key, value) {
+   if (mqttClient && mqttClient.isConnected()) {
+      message = new Paho.MQTT.Message(key + "=" + value);
+      message.destinationName = TOPIC_SETTINGS;
+      mqttClient.send(message);
+   } else {
+      alert("Chưa kết nối MQTT! Vui lòng chờ.");
+   }
+ }
+
+ // === HÀM XỬ LÝ GIAO DIỆN ===
+ function updateUI(d){
+   document.getElementById('time').innerText=d.time;
+   document.getElementById('temp').innerText=d.t + ' °C';
+   document.getElementById('soil').innerText=d.s;
+   document.getElementById('mode').innerText=d.m?'AUTO':'THỦ CÔNG';
+   
+   let p=document.getElementById('pump');
+   p.innerText=d.p?'CHẠY ('+d.sspd+')':'TẮT'; p.style.color=d.p?'#27ae60':'#c0392b';
+   document.getElementById('error-box').style.display = (d.err == 1) ? 'flex' : 'none';
+
+   // Cập nhật giá trị cài đặt nếu người dùng không gõ
+   if(document.activeElement.tagName!='INPUT' && document.activeElement.tagName!='BUTTON'){
+      document.getElementById('inS').value=d.ss; document.getElementById('inT').value=d.st;
+      document.getElementById('inTS').value=d.sts.substring(0,5); // Bỏ giây cho input type=time 
+      document.getElementById('inTE').value=d.ste.substring(0,5); 
+      document.getElementById('inPon').value=d.spon; document.getElementById('inSoak').value=d.ssoak;
+      document.getElementById('rngSpd').value=d.sspd; document.getElementById('lblSpd').innerText=d.sspd;
+   }
+   
+   let bOn=document.getElementById('btnOn'), bOff=document.getElementById('btnOff');
+   let bAu=document.getElementById('btnAu'), bMan=document.getElementById('btnMan');
+   if(d.m==1){ 
+     bOn.classList.add('b-dis'); bOff.classList.add('b-dis'); 
+     bAu.style.border="2px solid #333"; bMan.style.border="none"; bMan.style.opacity="0.5"; bAu.style.opacity="1";
+   } else { 
+     bOn.classList.remove('b-dis'); bOff.classList.remove('b-dis'); 
+     bMan.style.border="2px solid #333"; bAu.style.border="none"; bAu.style.opacity="0.5"; bMan.style.opacity="1";
+   }
+ };
+
+ function updSpd(v){ document.getElementById('lblSpd').innerText = v; }
+ function sndSpd(v){ mqttSendSetting('SPD', v); }
+
+ function setVal(key, id, min, max){
+   let val = parseInt(document.getElementById(id).value);
+   if(isNaN(val) || val < min || val > max){ alert("Giá trị ko hợp lệ!"); return;}
+   mqttSendSetting(key, val); alert('Đã lưu!');
+ }
+ function setTime(){
+   let t1 = document.getElementById('inTS').value; let t2 = document.getElementById('inTE').value;
+   if(t1.length==5) t1+=":00"; if(t2.length==5) t2+=":00";
+   mqttSendSetting('TS', t1); mqttSendSetting('TE', t2); alert('Đã lưu giờ!');
+ }
+ 
+ // Bắt đầu kết nối khi trang tải xong
+ window.onload = mqttConnect;
+</script>
+</body>
+</html>
