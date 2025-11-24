@@ -58,7 +58,7 @@
 <script>
  // === THIẾT LẬP MQTT (Phải trùng với ESP32) ===
  const MQTT_SERVER = "broker.hivemq.com";
- const MQTT_PORT = 8000; // Cổng WebSocket của HiveMQ
+ const MQTT_PORT = 8884; // Cổng WebSocket của HiveMQ
  const MQTT_CLIENT_ID = "Web_SmartGarden_" + parseInt(Math.random() * 100000); 
  const TOPIC_STATUS = "sg/esp32/garden1/status";
  const TOPIC_COMMAND = "sg/esp32/garden1/cmd";
@@ -74,7 +74,8 @@
    let options = {
      timeout: 3,
      onSuccess: onConnect,
-     onFailure: onFailure
+     onFailure: onFailure,
+     useSSL: true
    };
    
    document.getElementById('mqtt-status').innerText = "Đang kết nối...";
@@ -176,3 +177,4 @@
 </script>
 </body>
 </html>
+
