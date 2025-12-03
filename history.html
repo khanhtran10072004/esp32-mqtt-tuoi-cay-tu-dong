@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Báo Cáo Lịch Sử Tưới Tiêu</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f4f7f6;
+      color: #333;
+      padding: 10px;
+    }
+    .card {
+      background: #fff;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+
+<body>
+  <div class='card'>
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold text-gray-800">📊 Báo Cáo Lịch Sử Tưới Tiêu</h2>
+
+      <a
+        href="index.html"
+        class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-150 text-sm">
+        Quay lại Dashboard
+      </a>
+    </div>
+
+    <p id="loading-status" class="text-center text-indigo-500 font-medium">
+      Đang tải lịch sử từ Firebase...
+    </p>
+
+    <div id="history-container" class="mt-4">
+      <!-- Dữ liệu lịch sử sẽ được chèn vào đây -->
+    </div>
+  </div>
+
+
+  <!-- FIREBASE SCRIPT -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+      getAuth,
+      signInAnonymously,
+      signInWithCustomToken,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+    import {
+      getFirestore,
+      collection,
+      query,
+      orderBy,
+      onSnapshot,
+      setLogLevel
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+
+    // ==== CẤU HÌNH FIREBASE ====
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    let db;
+    let auth;
+    let userId = null;
+    let isAuthReady = false;
+
+
+    // ==== KHỞI TẠO FIREBASE ====
+    setLogLevel('debug');
+
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    auth = getAuth(app);
+
+
+    // ==== XÁC THỰC FIREBASE ====
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        userId = user.uid;
+        isAuthReady = true;
+        fetchHistory();
+      } else {
+        try {
+          if (initialAuthToken) {
+            await signInWithCustomToken(auth, initialAuthToken);
+          } else {
+            await signInAnonymously(auth);
+          }
+        } catch (e) {
+          console.error("Lỗi xác thực Firebase:", e);
+        }
+      }
+    });
+
+
+
+    // ==== HÀM TẢI DỮ LIỆU LỊCH SỬ ====
+    function fetchHistory() {
+      if (!isAuthReady || !db) return;
+
+      const container = document.getElementById('history-container');
+      const status = document.getElementById('loading-status');
+
+      try {
+        const historyCollectionRef = collection(
+          db,
+          `artifacts/${appId}/public/data/watering_history`
+        );
+
+        // Firestore không dùng orderBy vì thiếu index → sắp xếp bằng JS
+        const q = query(historyCollectionRef);
+
+        onSnapshot(
+          q,
+          (snapshot) => {
+            let historyItems = [];
+
+            snapshot.forEach(doc => {
+              historyItems.push({ id: doc.id, ...doc.data() });
+            });
+
+            // Sắp xếp theo timestamp mới nhất
+            historyItems.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            renderHistory(historyItems);
+            status.classList.add('hidden');
+          },
+
+          (error) => {
+            console.error("Lỗi Real-time Listener:", error);
+            status.innerText = "❌ Lỗi tải dữ liệu lịch sử.";
+            status.classList.remove('hidden');
+          }
+        );
+
+      } catch (e) {
+        console.error("Lỗi truy vấn Firestore:", e);
+        document.getElementById('loading-status').innerText = "❌ Lỗi hệ thống khi truy vấn dữ liệu.";
+      }
+    }
+
+
+
+    // ==== HÀM HIỂN THỊ DỮ LIỆU ====
+    function renderHistory(items) {
+      const container = document.getElementById('history-container');
+
+      if (items.length === 0) {
+        container.innerHTML = `
+          <p class="text-center text-gray-500 py-10">
+            Chưa có dữ liệu tưới nào được ghi lại.
+          </p>`;
+        return;
+      }
+
+
+      let html = `
+        <div class="overflow-x-auto rounded-lg shadow-md">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-100">
+              <tr class="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th class="px-4 py-3">Thời Gian</th>
+                <th class="px-4 py-3">Chế Độ</th>
+                <th class="px-4 py-3 text-center">⏱️ Bơm (giây)</th>
+                <th class="px-4 py-3 text-center">💧 Độ Ẩm Trước / Sau</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+      `;
+
+
+      items.forEach(item => {
+        const date = new Date(item.timestamp);
+
+        const formattedTime =
+          date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+          '<br>' +
+          date.toLocaleDateString('vi-VN');
+
+        const modeClass = item.triggerMode === 'AUTO'
+          ? 'text-blue-600'
+          : 'text-yellow-600';
+
+        html += `
+          <tr class="hover:bg-gray-50 transition duration-100">
+            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 leading-snug">${formattedTime}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-sm font-medium ${modeClass}">${item.triggerMode}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-sm text-center text-green-600 font-bold">${item.durationSeconds}</td>
+            <td class="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-700">${item.soilReadingBefore} → ${item.soilReadingAfter}</td>
+          </tr>
+        `;
+      });
+
+
+      html += `</tbody></table></div>`;
+      container.innerHTML = html;
+    }
+  </script>
+
+</body>
+</html>
