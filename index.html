@@ -16,22 +16,23 @@
  .b-auto{background:#2980b9;} .b-man{background:#f39c12;color:#333;}
  .b-dis{background:#e0e0e0!important;color:#999!important;pointer-events:none;}
  
- /* Style chung cho lịch sử */
- .history-card{background:#fff; padding:20px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1); max-width:600px; margin:20px auto;}
+ /* === STYLE CHUNG CHO CẢ 2 VIEW === */
+ .b-his { background: #8e44ad; width: 100%; margin-top: 15px; } 
+ .b-his:hover { background: #9b59b6; }
+ a { text-decoration: none; }
+
+ /* === STYLE CHO LỊCH SỬ VIEW (MỚI) === */
+ .history-card{background:#fff; padding:20px; border-radius:15px; box-shadow:0 4px 10px rgba(0,0,0,0.1); max-width:600px; margin:20px auto;}
+ .btn-back-spa {background:#2980b9; color:white; padding:12px; margin-bottom:15px; display:block; text-align:center; border-radius:8px; font-weight:bold; cursor:pointer; width:100%;}
+ .btn-back-spa:hover {background:#1f6e9e;}
+ 
  h2 {text-align:center; color:#2c3e50; margin-top:0;}
  table {width:100%; border-collapse:collapse; margin-top:15px; font-size:14px;}
  th {background:#34495e; color:white; padding:10px; text-align:left;}
  td {border-bottom:1px solid #ddd; padding:12px 10px;}
  .badge-on {color:#155724; font-weight:bold; background:#d4edda; padding:5px 10px; border-radius:15px; font-size:12px;}
  .badge-off {color:#721c24; font-weight:bold; background:#f8d7da; padding:5px 10px; border-radius:15px; font-size:12px;}
- 
- /* Style nút chuyển đổi */
- .b-his { background: #8e44ad; width: 100%; margin-top: 15px; } 
- .b-his:hover { background: #9b59b6; }
- .btn-back-spa {background:#6c757d; color:white; padding:12px; margin-bottom:15px; display:block; text-align:center; border-radius:8px; font-weight:bold; cursor:pointer;}
- .btn-back-spa:hover {background:#5a6268;}
 
- a { text-decoration: none; }
  #error-box { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(220,53,69,0.95); color:white; z-index:99; flex-direction:column; justify-content:center; align-items:center;}
  input[type=number] { width:60px; padding:5px; text-align:center; border:1px solid #ddd; border-radius:5px; }
  input[type=time] { width:90px; padding:5px; text-align:center; border:1px solid #ddd; border-radius:5px; }
@@ -76,16 +77,15 @@
       <div class='row'><span>⏳ Nghỉ (s):</span><div><input type='number' id='inSoak'><button class='save-btn' onclick="setVal('SOAK', 'inSoak', 1, 600)">Lưu</button></div></div>
 
             <a href="#" onclick="showView('history-view')"> 
-        <button class="b-his">📊 XEM BÁO CÁO & LỊCH SỬ....</button>
+        <button class="b-his">📊 XEM BÁO CÁO & LỊCH SỬ</button>
       </a>
     </div>
   </div>
 </div>
 
-
 <div id="history-view" style="display: none;">
   <div class='history-card'>
-        <div class="btn-back-spa" onclick="showView('dashboard-view')">⬅ Quay lại Bảng Điều Khiển</div>
+        <a href="#" onclick="showView('dashboard-view')" class="btn-back-spa">⬅ Quay lại Bảng Điều Khiển</a>
     
     <h2>📜 Nhật Ký Hoạt Động</h2>
     <div id="status">Đang tải dữ liệu từ Cloud...</div>
@@ -106,7 +106,7 @@
 
 
 <script>
-// === THIẾT LẬP MQTT (Phần này được giữ nguyên) ===
+// === THIẾT LẬP MQTT ===
 const MQTT_SERVER = "broker.hivemq.com";
 const MQTT_PORT = 8884; 
 const MQTT_CLIENT_ID = "Web_SmartGarden_" + parseInt(Math.random() * 100000); 
@@ -117,11 +117,9 @@ const TOPIC_SETTINGS = "sg/esp32/garden1/set";
 let mqttClient;  
 
 function mqttConnect() {
-  // ... (Các hàm kết nối MQTT) ...
   mqttClient = new Paho.MQTT.Client(MQTT_SERVER, MQTT_PORT, MQTT_CLIENT_ID); 
   mqttClient.onConnectionLost = onConnectionLost;
   mqttClient.onMessageArrived = onMessageArrived;
-
   let options = {timeout: 3, onSuccess: onConnect, onFailure: onFailure, useSSL: true};
   document.getElementById('mqtt-status').innerText = "Đang kết nối...";
   mqttClient.connect(options);
@@ -130,18 +128,15 @@ function mqttConnect() {
 function onConnect() {
   document.getElementById('mqtt-status').innerText = "✅ Đã kết nối MQTT";
   mqttClient.subscribe(TOPIC_STATUS);
-  console.log("MQTT Connected & Subscribed to " + TOPIC_STATUS);
 }
 
 function onFailure(responseObject) {
   document.getElementById('mqtt-status').innerText = "❌ Lỗi kết nối MQTT. Thử lại sau 5s.";
-  console.log("MQTT Failed: " + responseObject.errorMessage);
   setTimeout(mqttConnect, 5000);
 }
 
 function onConnectionLost(responseObject) {
   if (responseObject.errorCode !== 0) {
-    console.log("MQTT Connection Lost: " + responseObject.errorMessage);
     mqttConnect();
   }
 }
@@ -173,7 +168,6 @@ function mqttSendSetting(key, value) {
 }
 
 function updateUI(d){
-  // ... (Hàm updateUI được giữ nguyên) ...
   document.getElementById('time').innerText=d.time;
   document.getElementById('temp').innerText=d.t + ' °C';
   document.getElementById('soil').innerText=d.s;
@@ -217,9 +211,9 @@ function setTime(){
 }
 
 
-// === HÀM XỬ LÝ LỊCH SỬ (Giữ nguyên từ file history.html) ===
+// === HÀM XỬ LÝ LỊCH SỬ (Firebase) ===
 const DB_URL = "https://vuonthongminh-ffe93-default-rtdb.firebaseio.com/history.json?orderBy=\"$key\"&limitToLast=20";
-let historyInterval; // Biến lưu Interval
+let historyInterval; 
 
 async function loadHistory() {
   try {
@@ -253,7 +247,7 @@ async function loadHistory() {
 }
 
 
-// === HÀM QUẢN LÝ VIEW (MỚI) ===
+// === HÀM QUẢN LÝ VIEW (SPA) ===
 function showView(viewId) {
   // Ẩn/Hiện giao diện
   document.getElementById('dashboard-view').style.display = (viewId === 'dashboard-view') ? 'block' : 'none';
@@ -262,7 +256,6 @@ function showView(viewId) {
   // Xử lý bộ đếm thời gian cho Lịch sử
   if (viewId === 'history-view') {
     loadHistory(); // Tải ngay lập tức
-    // Bắt đầu tải lại mỗi 5s
     historyInterval = setInterval(loadHistory, 5000); 
   } else {
     // Ngừng tải lại lịch sử khi quay về Dashboard
@@ -281,4 +274,3 @@ window.onload = function() {
 
 </body>
 </html>
-
