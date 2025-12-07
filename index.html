@@ -60,8 +60,9 @@
    <div class='row'><span>⏱️ Bơm (s):</span><div><input type='number' id='inPon'><button class='save-btn' onclick="setVal('PON', 'inPon', 1, 300)">Lưu</button></div></div>
    <div class='row'><span>⏳ Nghỉ (s):</span><div><input type='number' id='inSoak'><button class='save-btn' onclick="setVal('SOAK', 'inSoak', 1, 600)">Lưu</button></div></div>
 
-   <a href="history.html">
-     <button class="b-his">📊 XEM BÁO CÁO & LỊCH SỬ</button>
+   <a href="#" onclick="history.back(); return false;" 
+   class="bg-gray-500 hover:bg-gray-600 ..."> 
+    <button class="b-his">📜 Xem Lịch Sử Tưới Cây</button>
    </a>
  </div>
 </div>
@@ -205,4 +206,5 @@
  window.onload = mqttConnect;
 </script>
 </body>
+
 </html>
